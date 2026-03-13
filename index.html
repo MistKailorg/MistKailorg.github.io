@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Scalping Bot — Strategy Breakdown</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a0e;
+    --surface: #0b1318;
+    --card: #0f1d24;
+    --border: #1a2e38;
+    --accent: #00ffc8;
+    --accent2: #ff3e6c;
+    --accent3: #f0b429;
+    --text: #c8dde8;
+    --muted: #4a6b7a;
+    --white: #eaf4f8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+
+  /* ── GRID NOISE BACKGROUND ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,200,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,200,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── TICKER TAPE ── */
+  .ticker-wrap {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 36px;
+    background: var(--accent);
+    overflow: hidden;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+  }
+  .ticker-track {
+    display: flex;
+    gap: 60px;
+    animation: ticker 30s linear infinite;
+    white-space: nowrap;
+    padding-left: 100%;
+  }
+  .ticker-item {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #050a0e;
+    letter-spacing: 0.05em;
+  }
+  .ticker-item .up { color: #0a4a30; }
+  .ticker-item .down { color: #7a0020; }
+  @keyframes ticker {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 120px 60px 80px;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  .hero-glow {
+    position: absolute;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(0,255,200,0.08) 0%, transparent 70%);
+    top: -100px; left: -200px;
+    pointer-events: none;
+  }
+  .hero-glow2 {
+    position: absolute;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(255,62,108,0.06) 0%, transparent 70%);
+    bottom: 0; right: -100px;
+    pointer-events: none;
+  }
+
+  .tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    display: inline-block;
+    padding: 4px 14px;
+    margin-bottom: 32px;
+    position: relative;
+  }
+  .tag::before {
+    content: '▶';
+    margin-right: 8px;
+    font-size: 9px;
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(56px, 9vw, 130px);
+    line-height: 0.92;
+    letter-spacing: 0.01em;
+    color: var(--white);
+    margin-bottom: 32px;
+    position: relative;
+  }
+  h1 span.accent { color: var(--accent); }
+  h1 span.red { color: var(--accent2); }
+
+  .hero-sub {
+    font-size: 18px;
+    color: var(--muted);
+    max-width: 640px;
+    margin-bottom: 48px;
+    font-weight: 300;
+    line-height: 1.6;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .meta-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .meta-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .meta-value.red { color: var(--accent2); }
+  .meta-value.gold { color: var(--accent3); }
+
+  /* ── SCROLL INDICATOR ── */
+  .scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 60px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .scroll-line {
+    width: 60px;
+    height: 1px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .scroll-line::after {
+    content: '';
+    position: absolute;
+    left: -100%; top: 0;
+    width: 100%; height: 100%;
+    background: var(--accent);
+    animation: scan 2s ease-in-out infinite;
+  }
+  @keyframes scan { to { left: 100%; } }
+
+  /* ── MAIN CONTENT ── */
+  .content {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 40px 120px;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section {
+    margin-bottom: 80px;
+  }
+
+  .section-number {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(36px, 5vw, 56px);
+    color: var(--white);
+    letter-spacing: 0.02em;
+    line-height: 1;
+    margin-bottom: 24px;
+    position: relative;
+    display: inline-block;
+  }
+  h2::after {
+    content: '';
+    position: absolute;
+    bottom: -8px; left: 0;
+    width: 40px; height: 3px;
+    background: var(--accent);
+  }
+
+  h3 {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    color: var(--accent3);
+    text-transform: uppercase;
+    margin: 40px 0 16px;
+  }
+
+  p {
+    color: var(--text);
+    margin-bottom: 20px;
+    font-size: 16px;
+    line-height: 1.8;
+    font-weight: 300;
+  }
+
+  strong { color: var(--white); font-weight: 500; }
+  em { color: var(--accent); font-style: normal; font-family: 'Space Mono', monospace; font-size: 0.9em; }
+
+  /* ── STRATEGY CARDS ── */
+  .strategy-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 40px 0;
+  }
+  @media(max-width: 700px) { .strategy-grid { grid-template-columns: 1fr; } }
+
+  .strategy-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, transform 0.3s;
+    cursor: default;
+  }
+  .strategy-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-4px);
+  }
+  .strategy-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+  }
+  .strategy-card.red::before { background: var(--accent2); }
+  .strategy-card.gold::before { background: var(--accent3); }
+
+  .card-icon {
+    font-size: 28px;
+    margin-bottom: 12px;
+    display: block;
+  }
+  .card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: block;
+  }
+  .strategy-card.red .card-title { color: var(--accent2); }
+  .strategy-card.gold .card-title { color: var(--accent3); }
+  .card-body { font-size: 14px; color: var(--text); line-height: 1.7; font-weight: 300; }
+
+  /* ── CODE BLOCKS ── */
+  .code-block {
+    background: #040d12;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 28px 32px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    line-height: 1.9;
+    color: #7ed8b0;
+    overflow-x: auto;
+    margin: 32px 0;
+    position: relative;
+  }
+  .code-block::before {
+    content: 'ALGORITHM';
+    position: absolute;
+    top: 12px; right: 16px;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+  }
+  .code-block .kw { color: var(--accent2); }
+  .code-block .fn { color: var(--accent3); }
+  .code-block .cm { color: var(--muted); font-style: italic; }
+  .code-block .num { color: var(--accent); }
+  .code-block .str { color: #b0e0c8; }
+
+  /* ── TABLE ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+  }
+  .data-table th {
+    background: var(--surface);
+    color: var(--accent);
+    text-align: left;
+    padding: 14px 20px;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--accent);
+  }
+  .data-table td {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .data-table tr:hover td { background: var(--surface); color: var(--white); }
+  .data-table .up { color: var(--accent); }
+  .data-table .down { color: var(--accent2); }
+  .data-table .mid { color: var(--accent3); }
+
+  /* ── QUOTE BLOCK ── */
+  .quote {
+    border-left: 3px solid var(--accent2);
+    padding: 24px 32px;
+    margin: 40px 0;
+    background: linear-gradient(90deg, rgba(255,62,108,0.05) 0%, transparent 100%);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--white);
+    line-height: 1.6;
+    font-style: italic;
+  }
+  .quote cite {
+    display: block;
+    margin-top: 12px;
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    font-style: normal;
+  }
+
+  /* ── STAT ROW ── */
+  .stat-row {
+    display: flex;
+    gap: 0;
+    margin: 40px 0;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .stat-cell {
+    flex: 1;
+    padding: 28px 24px;
+    border-right: 1px solid var(--border);
+    background: var(--card);
+    text-align: center;
+  }
+  .stat-cell:last-child { border-right: none; }
+  .stat-cell:hover { background: var(--surface); }
+  .stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .stat-cell:nth-child(1) .stat-num { color: var(--accent); }
+  .stat-cell:nth-child(2) .stat-num { color: var(--accent3); }
+  .stat-cell:nth-child(3) .stat-num { color: var(--accent2); }
+  .stat-cell:nth-child(4) .stat-num { color: var(--white); }
+  .stat-lbl {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* ── PHASE TIMELINE ── */
+  .timeline {
+    position: relative;
+    margin: 48px 0;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent2));
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 40px;
+    padding-left: 28px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -36px; top: 8px;
+    width: 10px; height: 10px;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+    border-radius: 50%;
+  }
+  .timeline-item:nth-child(even)::before { border-color: var(--accent2); }
+  .timeline-phase {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .timeline-item:nth-child(even) .timeline-phase { color: var(--accent2); }
+  .timeline-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    color: var(--white);
+    margin-bottom: 10px;
+    letter-spacing: 0.03em;
+  }
+  .timeline-body { font-size: 14px; color: var(--text); font-weight: 300; line-height: 1.7; }
+
+  /* ── WARNING BOX ── */
+  .warning {
+    background: rgba(255,62,108,0.07);
+    border: 1px solid rgba(255,62,108,0.3);
+    padding: 24px 28px;
+    margin: 40px 0;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .warning-icon { font-size: 24px; flex-shrink: 0; }
+  .warning-text { font-size: 14px; color: var(--text); line-height: 1.7; }
+  .warning-text strong { color: var(--accent2); }
+
+  /* ── TIP BOX ── */
+  .tip {
+    background: rgba(0,255,200,0.04);
+    border: 1px solid rgba(0,255,200,0.2);
+    padding: 24px 28px;
+    margin: 40px 0;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .tip-icon { font-size: 24px; flex-shrink: 0; }
+  .tip-text { font-size: 14px; color: var(--text); line-height: 1.7; }
+  .tip-text strong { color: var(--accent); }
+
+  /* ── DIVIDER ── */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin: 64px 0;
+  }
+  .divider-line { flex: 1; height: 1px; background: var(--border); }
+  .divider-mark {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid var(--border);
+    padding: 48px 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .footer-brand {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .footer-note {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    max-width: 400px;
+    line-height: 1.7;
+  }
+
+  /* ── LIVE BADGE ── */
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,255,200,0.08);
+    border: 1px solid var(--accent);
+    padding: 6px 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .live-dot {
+    width: 6px; height: 6px;
+    background: var(--accent2);
+    border-radius: 50%;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* ── FADE IN ── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(24px);
+    animation: fadeUp 0.8s ease forwards;
+  }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .delay-1 { animation-delay: 0.1s; }
+  .delay-2 { animation-delay: 0.25s; }
+  .delay-3 { animation-delay: 0.4s; }
+  .delay-4 { animation-delay: 0.55s; }
+  .delay-5 { animation-delay: 0.7s; }
+
+  /* ── CONTACT LINKS ── */
+  .contact-link {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 20px 28px;
+    text-decoration: none;
+    color: var(--white);
+    transition: border-color 0.25s, background 0.25s, transform 0.25s;
+  }
+  .contact-link:hover {
+    border-color: var(--accent);
+    background: rgba(0,255,200,0.05);
+    transform: translateX(6px);
+  }
+  .gold-link:hover {
+    border-color: var(--accent3) !important;
+    background: rgba(240,180,41,0.05) !important;
+  }
+  .contact-link-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+  }
+  .contact-link-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .contact-link-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    color: var(--white);
+    letter-spacing: 0.04em;
+  }
+  .contact-link-arrow {
+    font-size: 20px;
+    color: var(--accent);
+    transition: transform 0.2s;
+  }
+  .contact-link:hover .contact-link-arrow {
+    transform: translateX(4px);
+  }
+
+  @media(max-width: 600px) {
+    .hero { padding: 100px 24px 60px; }
+    .content { padding: 0 20px 80px; }
+    .stat-row { flex-direction: column; }
+    .stat-cell { border-right: none; border-bottom: 1px solid var(--border); }
+    footer { padding: 40px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TICKER TAPE -->
+<div class="ticker-wrap">
+  <div class="ticker-track">
+    <span class="ticker-item">BTC <span class="up">▲ +2.3%</span></span>
+    <span class="ticker-item">ETH <span class="down">▼ -1.1%</span></span>
+    <span class="ticker-item">SOL <span class="up">▲ +4.7%</span></span>
+    <span class="ticker-item">XRP <span class="down">▼ -0.8%</span></span>
+    <span class="ticker-item">POLYMARKET — MICRO WINDOW SCALPING STRATEGY</span>
+    <span class="ticker-item">ALL-TIME PNL <span class="up">+$1,436,159</span></span>
+    <span class="ticker-item">37,781 PREDICTIONS</span>
+    <span class="ticker-item">BTC <span class="up">▲ +2.3%</span></span>
+    <span class="ticker-item">ETH <span class="down">▼ -1.1%</span></span>
+    <span class="ticker-item">SOL <span class="up">▲ +4.7%</span></span>
+    <span class="ticker-item">XRP <span class="down">▼ -0.8%</span></span>
+    <span class="ticker-item">POLYMARKET — MICRO WINDOW SCALPING STRATEGY</span>
+    <span class="ticker-item">ALL-TIME PNL <span class="up">+$1,436,159</span></span>
+    <span class="ticker-item">37,781 PREDICTIONS</span>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-glow2"></div>
+
+  <div class="tag fade-in">Senior Dev Analysis · Polymarket Bot</div>
+  <h1 class="fade-in delay-1">
+    HOW A<br>
+    <span class="accent">SCALPING</span><br>
+    BOT MADE<br>
+    <span class="red">$1.4M</span>
+  </h1>
+  <p class="hero-sub fade-in delay-2">
+    A forensic breakdown of a high-frequency prediction market bot that exploited odds drift and delta-neutral positioning across 37,000+ trades on Polymarket crypto markets.
+  </p>
+
+  <div class="hero-meta fade-in delay-3">
+    <div class="meta-item">
+      <span class="meta-label">All-Time Profit</span>
+      <span class="meta-value">$1.436M</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Total Predictions</span>
+      <span class="meta-value gold">37,781</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Biggest Win</span>
+      <span class="meta-value red">$23.6K</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Strategy Type</span>
+      <span class="meta-value" style="font-size:14px;padding-top:6px;">HFT Scalping</span>
+    </div>
+  </div>
+
+  <div class="scroll-hint fade-in delay-4">
+    <div class="scroll-line"></div>
+    Scroll to read
+  </div>
+</section>
+
+<!-- MAIN CONTENT -->
+<div class="content">
+
+  <!-- OVERVIEW -->
+  <section class="section">
+    <span class="section-number">// 01 — OVERVIEW</span>
+    <h2>What This Bot Does</h2>
+
+    <div class="live-badge"><div class="live-dot"></div> Fully Automated — 24/7 Operation</div>
+
+    <p>This is not a directional trading bot. It does not try to predict whether Bitcoin goes up or down. Instead, it exploits the <strong>structural inefficiency of Polymarket's short-duration crypto markets</strong> — specifically the 5-minute and 15-minute price windows — by acting as a quasi market maker, capturing odds drift, and delta-hedging in real time.</p>
+
+    <p>The bot was observed active at 2–3AM ET with no signs of human involvement: the speed, consistency, and pattern of trades at sub-second intervals make manual operation impossible. This is <strong>a fully autonomous HFT system</strong> adapted for prediction markets.</p>
+
+    <div class="stat-row">
+      <div class="stat-cell">
+        <div class="stat-num">$1.4M</div>
+        <div class="stat-lbl">All-Time P&L</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">37K+</div>
+        <div class="stat-lbl">Trades Executed</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">4</div>
+        <div class="stat-lbl">Assets Traded</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">5min</div>
+        <div class="stat-lbl">Core Timeframe</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider">
+    <div class="divider-line"></div>
+    <div class="divider-mark">STRATEGY COMPONENTS</div>
+    <div class="divider-line"></div>
+  </div>
+
+  <!-- STRATEGY 1 -->
+  <section class="section">
+    <span class="section-number">// 02 — CORE STRATEGY</span>
+    <h2>The 10 Strategy Pillars</h2>
+
+    <div class="strategy-grid">
+      <div class="strategy-card">
+        <span class="card-title">01 · Market Focus</span>
+        <div class="card-body">Exclusively targets short-duration crypto "Up or Down" markets: 5-minute windows (3:00–3:05, 3:05–3:10, 3:10–3:15 AM ET) and 15-minute windows (3:00–3:15 AM ET). Hourly candle markets are also included as secondary targets.</div>
+      </div>
+      <div class="strategy-card red">
+        <span class="card-title">02 · Delta-Neutral Straddle</span>
+        <div class="card-body">Simultaneously buys both Up AND Down on the same market window near 50/50 odds. This is not directional betting — it's capturing the spread and profiting when the odds drift away from equilibrium after entry.</div>
+      </div>
+      <div class="strategy-card gold">
+        <span class="card-title">03 · Ladder / DCA Entry</span>
+        <div class="card-body">Instead of one large order, the bot places multiple incremental buys at successive price ticks: 50¢ → 51¢ → 52¢. This mimics traditional limit-order accumulation, achieving a better average entry price under slippage.</div>
+      </div>
+      <div class="strategy-card">
+        <span class="card-title">04 · Dynamic Delta Hedging</span>
+        <div class="card-body">As the market moves, the bot sells the deteriorating side and doubles down on the winning side. Observed: sells Up at 32¢ after buying at 50¢, then loads heavily into Down. Classic real-time delta management.</div>
+      </div>
+      <div class="strategy-card red">
+        <span class="card-title">05 · Odds-Gated Entries</span>
+        <div class="card-body">Entry aggressiveness scales with how close to 50/50 the market is. Near-even odds see maximum capital deployment. Extreme odds (e.g. Up 6¢ / Down 94¢) see minimal or zero position. The bot never chases deep favorites.</div>
+      </div>
+      <div class="strategy-card gold">
+        <span class="card-title">06 · Dynamic Position Sizing</span>
+        <div class="card-body">Position size is inversely proportional to odds extremity. At 50/50: 40–120 shares. At 70/30: 10–40 shares. At 90/10: 1–5 shares only. This Kelly-inspired sizing protects capital on asymmetric bets.</div>
+      </div>
+      <div class="strategy-card">
+        <span class="card-title">07 · Correlated Multi-Asset</span>
+        <div class="card-body">BTC, ETH, SOL, and XRP are traded simultaneously in matching time windows. The bot exploits crypto correlation — if BTC sentiment turns bearish, it positions Down across ETH, SOL, XRP in the same window.</div>
+      </div>
+      <div class="strategy-card red">
+        <span class="card-title">08 · Micro-Window Scalping</span>
+        <div class="card-body">10–20+ trades within a single 5-minute window, scalping fractions of a cent in odds movement. This requires real-time orderbook monitoring and sub-second execution — impossible without full automation.</div>
+      </div>
+      <div class="strategy-card gold">
+        <span class="card-title">09 · Instant Redemption</span>
+        <div class="card-body">Resolved positions are redeemed immediately. Zero idle cash. Capital recycled into the next window within seconds of settlement. This compounds the effective capital utilization rate dramatically.</div>
+      </div>
+      <div class="strategy-card">
+        <span class="card-title">10 · Low-Liquidity Hours</span>
+        <div class="card-body">Operates heavily during 2–4AM ET, when human trading volume drops. Thinner orderbooks mean the bot's orders have more price impact, and inefficiencies persist longer before being arbitraged away by other participants.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider">
+    <div class="divider-line"></div>
+    <div class="divider-mark">EXECUTION LOGIC</div>
+    <div class="divider-line"></div>
+  </div>
+
+  <!-- ALGORITHM -->
+  <section class="section">
+    <span class="section-number">// 03 — ALGORITHM</span>
+    <h2>Pseudocode Logic</h2>
+
+    <p>Here is the reconstructed execution logic based on observed trade patterns. This is the closest approximation to the bot's core decision engine:</p>
+
+    <div class="code-block">
+<span class="cm"># ── POLYMARKET SCALPING BOT — RECONSTRUCTED LOGIC ──</span>
+
+<span class="kw">ASSETS</span>  = [<span class="str">"BTC"</span>, <span class="str">"ETH"</span>, <span class="str">"SOL"</span>, <span class="str">"XRP"</span>]
+<span class="kw">WINDOWS</span> = [<span class="str">"5min"</span>, <span class="str">"15min"</span>, <span class="str">"1hr"</span>]
+
+<span class="fn">loop</span> every_second():
+
+  <span class="kw">for</span> asset <span class="kw">in</span> ASSETS:
+    <span class="kw">for</span> window <span class="kw">in</span> upcoming_windows(asset):
+
+      up_odds, down_odds = <span class="fn">get_current_odds</span>(asset, window)
+      imbalance = abs(up_odds - <span class="num">0.50</span>)
+
+      <span class="cm"># ── ENTRY GATE: Only trade near 50/50 ──</span>
+      <span class="kw">if</span> imbalance > <span class="num">0.20</span>: <span class="kw">continue</span>
+
+      size = <span class="fn">calc_size</span>(imbalance)
+      <span class="cm"># size ∝ 1 / imbalance  (max ~120 shares @ 50/50)</span>
+
+      <span class="cm"># ── STRADDLE: Buy both sides ──</span>
+      <span class="kw">if not</span> <span class="fn">has_position</span>(asset, window):
+        <span class="fn">ladder_buy</span>(<span class="str">"UP"</span>,   asset, window, size, ticks=<span class="num">5</span>)
+        <span class="fn">ladder_buy</span>(<span class="str">"DOWN"</span>, asset, window, size, ticks=<span class="num">5</span>)
+
+      <span class="cm"># ── DELTA HEDGE: Manage live positions ──</span>
+      <span class="kw">else</span>:
+        pos_up, pos_down = <span class="fn">get_positions</span>(asset, window)
+        delta = pos_up.value - pos_down.value
+
+        <span class="kw">if</span> delta > THRESHOLD:     <span class="cm"># Up side overweight</span>
+          <span class="fn">sell</span>(<span class="str">"UP"</span>,   asset, window, qty=pos_up * <span class="num">0.6</span>)
+          <span class="fn">buy</span>(<span class="str">"DOWN"</span>, asset, window, qty=size * <span class="num">1.5</span>)
+
+        <span class="kw">elif</span> delta < -THRESHOLD:   <span class="cm"># Down side overweight</span>
+          <span class="fn">sell</span>(<span class="str">"DOWN"</span>, asset, window, qty=pos_down * <span class="num">0.6</span>)
+          <span class="fn">buy</span>(<span class="str">"UP"</span>,   asset, window, qty=size * <span class="num">1.5</span>)
+
+      <span class="cm"># ── CORRELATION: Check cross-asset signal ──</span>
+      dominant_sentiment = <span class="fn">get_btc_sentiment</span>()
+      <span class="kw">if</span> dominant_sentiment == <span class="str">"BEARISH"</span>:
+        <span class="fn">bias_down</span>(assets=[<span class="str">"ETH"</span>, <span class="str">"SOL"</span>, <span class="str">"XRP"</span>], window=window)
+
+  <span class="cm"># ── SETTLEMENT: Redeem resolved markets instantly ──</span>
+  <span class="kw">for</span> market <span class="kw">in</span> <span class="fn">get_resolved_markets</span>():
+    <span class="fn">redeem</span>(market)
+    <span class="fn">recycle_capital</span>(market.payout)
+    </div>
+
+    <h3>Position Sizing Table</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Odds Range</th>
+          <th>Imbalance From 50/50</th>
+          <th>Typical Share Size</th>
+          <th>Risk Level</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="up">~50/50 (48¢–52¢)</td>
+          <td>&lt; 2%</td>
+          <td>80–130 shares</td>
+          <td class="up">LOW ■</td>
+        </tr>
+        <tr>
+          <td class="mid">55/45 (45¢–55¢)</td>
+          <td>2%–5%</td>
+          <td>40–80 shares</td>
+          <td class="mid">MEDIUM ■</td>
+        </tr>
+        <tr>
+          <td class="mid">65/35 (35¢–65¢)</td>
+          <td>5%–15%</td>
+          <td>10–40 shares</td>
+          <td class="mid">MEDIUM ■</td>
+        </tr>
+        <tr>
+          <td class="down">75/25 (25¢–75¢)</td>
+          <td>15%–25%</td>
+          <td>3–10 shares</td>
+          <td class="down">HIGH ■</td>
+        </tr>
+        <tr>
+          <td class="down">90/10 (10¢–90¢)</td>
+          <td>&gt; 25%</td>
+          <td>0–3 shares</td>
+          <td class="down">EXTREME ■</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="divider">
+    <div class="divider-line"></div>
+    <div class="divider-mark">BUILD GUIDE</div>
+    <div class="divider-line"></div>
+  </div>
+
+  <!-- HOW TO BUILD -->
+  <section class="section">
+    <span class="section-number">// 04 — IMPLEMENTATION</span>
+    <h2>How To Build This</h2>
+
+    <div class="timeline">
+
+      <div class="timeline-item">
+        <div class="timeline-phase">Phase 01</div>
+        <div class="timeline-title">Polymarket API Integration</div>
+        <div class="timeline-body">Connect to Polymarket's CLOB (Central Limit Order Book) API. Authenticate via wallet (Polygon / MATIC). Subscribe to real-time orderbook WebSocket feeds for BTC, ETH, SOL, XRP markets. Parse market IDs for upcoming 5-minute and 15-minute windows. Library recommendation: <em>py-clob-client</em> (official Python SDK).</div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-phase">Phase 02</div>
+        <div class="timeline-title">Odds Monitor + Signal Engine</div>
+        <div class="timeline-body">Poll odds every 500ms for all target markets. Calculate the <em>imbalance = |up_price − 0.50|</em>. Trigger entry logic when imbalance drops below 0.20 (20% from center). Track odds history to detect drift direction and speed, which informs delta hedging decisions.</div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-phase">Phase 03</div>
+        <div class="timeline-title">Order Execution Engine</div>
+        <div class="timeline-body">Implement ladder buying: split target size into N incremental orders spaced 1–2 ticks apart. Use limit orders, not market orders — this captures spread rather than paying it. Implement retry logic and slippage guards. Target execution latency under 200ms per order.</div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-phase">Phase 04</div>
+        <div class="timeline-title">Delta Hedging Loop</div>
+        <div class="timeline-body">Every tick, calculate net delta of each position. If delta exceeds ±THRESHOLD (tune empirically, start at 15%), execute hedge: sell overweight side at market, buy underweight side with limit order. This is the P&L engine — capture the mean reversion to 50/50.</div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-phase">Phase 05</div>
+        <div class="timeline-title">Cross-Asset Correlation Filter</div>
+        <div class="timeline-body">Monitor BTC as the leading sentiment indicator. If BTC "Down" odds spike above 65¢, apply a directional bias to ETH/SOL/XRP positions — reduce Up exposure, increase Down. This adds alpha beyond pure market-making by following macro crypto momentum.</div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-phase">Phase 06</div>
+        <div class="timeline-title">Settlement + Capital Recycling</div>
+        <div class="timeline-body">Subscribe to resolution events via API. On resolution, call redeem() immediately. Track net payout and reinject into the capital pool. Log every trade to a database (PostgreSQL recommended) for performance analysis and strategy iteration.</div>
+      </div>
+
+    </div>
+
+    <div class="code-block">
+<span class="cm"># ── TECH STACK RECOMMENDATION ──</span>
+
+Language:     <span class="str">Python 3.11+</span>  <span class="cm">(asyncio for concurrency)</span>
+API Client:   <span class="str">py-clob-client</span>  <span class="cm">(official Polymarket SDK)</span>
+Websockets:   <span class="str">websockets</span> / <span class="str">aiohttp</span>
+Scheduling:   <span class="str">APScheduler</span>  <span class="cm">(per-second polling)</span>
+Database:     <span class="str">PostgreSQL</span>  <span class="cm">(trade log + analytics)</span>
+Wallet:       <span class="str">eth-account</span>  <span class="cm">(Polygon MATIC signing)</span>
+Monitoring:   <span class="str">Grafana + InfluxDB</span>  <span class="cm">(live P&L dashboard)</span>
+Hosting:      <span class="str">AWS EC2</span> us-east-1  <span class="cm">(low latency to Poly servers)</span>
+    </div>
+  </section>
+
+  <!-- EDGE ANALYSIS -->
+  <section class="section">
+    <span class="section-number">// 05 — EDGE ANALYSIS</span>
+    <h2>Where The Edge Comes From</h2>
+
+    <div class="quote">
+      "The bot doesn't predict the future. It exploits the present — specifically, the temporary mispricing that occurs as human traders overreact to short-term price ticks on 5-minute markets."
+      <cite>— Strategy Analysis, March 2026</cite>
+    </div>
+
+    <h3>Edge Source 1: Odds Mean Reversion</h3>
+    <p>On Polymarket's micro-window markets, odds frequently overshoot 50/50 as emotional traders pile in directionally. The bot fades these overreactions — buying the oversold side, selling the overbought side — and collects when odds revert. This is statistically robust on short windows where true probability really is ~50/50.</p>
+
+    <h3>Edge Source 2: Speed Advantage</h3>
+    <p>The bot executes at sub-second speed during 2–4AM ET when human liquidity is thin. It is effectively the fastest participant in these markets at those hours, allowing it to <strong>set the price rather than take the price</strong>.</p>
+
+    <h3>Edge Source 3: Laddered Execution</h3>
+    <p>By splitting orders into ticks, the bot achieves a better average price than any single market order would get. On a thin orderbook, this alone captures 1–3 cents of edge per position — which compounds enormously across 37,000+ trades.</p>
+
+    <h3>Edge Source 4: Instant Capital Recycling</h3>
+    <p>Settling and redeploying capital within seconds means effective capital utilization is dramatically higher than it appears. A $5,000 bankroll recycled 6x per hour is equivalent to $30,000 in deployed capital.</p>
+  </section>
+
+  <!-- RISKS -->
+  <section class="section">
+    <span class="section-number">// 06 — RISKS</span>
+    <h2>Key Risks To Manage</h2>
+
+    <div class="warning">
+      <div class="warning-text"><strong>Directional Black Swan Risk:</strong> If BTC flash-crashes 10% within a 5-minute window, both Up and Down positions may lose (the Down bet wins but the odds may have been bought at the wrong price level). Implement a max-loss-per-window circuit breaker.</div>
+    </div>
+
+    <div class="warning">
+      <div class="warning-text"><strong>Liquidity Drying Up Risk:</strong> The strategy relies on being able to ladder in and out of positions. If a market suddenly has no counterparty, orders hang unfilled. Implement order timeout and cancellation logic after 10 seconds.</div>
+    </div>
+
+    <div class="warning">
+      <div class="warning-text"><strong>Copycat / Competition Risk:</strong> As more bots discover these micro-window markets, the edge compresses. Monitor win rate weekly — if it drops below 52%, the market is efficient and the strategy needs adjustment.</div>
+    </div>
+
+    <div class="tip">
+      <div class="tip-text"><strong>Risk Mitigation:</strong> Never deploy more than 15% of bankroll in a single 15-minute window across all assets. Set a daily drawdown limit at 8% of total capital — if hit, the bot pauses for 4 hours. Log every trade and review metrics weekly.</div>
+    </div>
+  </section>
+
+  <!-- SUMMARY -->
+  <section class="section">
+    <span class="section-number">// 07 — SUMMARY</span>
+    <h2>Final Architecture</h2>
+
+    <div class="code-block">
+<span class="cm">╔══════════════════════════════════════════════════════╗</span>
+<span class="cm">║     POLYMARKET SCALPING BOT — COMPLETE ARCHITECTURE  ║</span>
+<span class="cm">╚══════════════════════════════════════════════════════╝</span>
+
+<span class="kw">INPUTS:</span>
+  ├─ Polymarket CLOB WebSocket  (real-time odds)
+  ├─ Polygon wallet             (order signing)
+  └─ BTC sentiment feed        (cross-asset signal)
+
+<span class="kw">CORE LOGIC:</span>
+  ├─ [1] Odds Monitor          → detect near-50/50 markets
+  ├─ [2] Entry Engine          → straddle + ladder buy both sides
+  ├─ [3] Size Calculator       → Kelly-scaled by imbalance
+  ├─ [4] Delta Hedger          → sell drift, buy lag every tick
+  ├─ [5] Correlation Filter    → BTC bias → ETH/SOL/XRP
+  └─ [6] Settlement Engine     → instant redeem + recycle
+
+<span class="kw">GUARD RAILS:</span>
+  ├─ Max 15% bankroll per window
+  ├─ Daily drawdown circuit breaker (8%)
+  ├─ Order timeout: cancel after 10s unfilled
+  └─ Win rate monitor: pause if below 52%
+
+<span class="kw">OUTPUTS:</span>
+  ├─ Trade log (PostgreSQL)
+  ├─ Live P&L dashboard (Grafana)
+  └─ Profit (compounding)
+    </div>
+
+    <p>This bot's $1.4M all-time profit over 37,781 trades is not luck. It's the result of a disciplined, systematic approach to exploiting structural inefficiency in prediction market microstructure — the same techniques used in traditional HFT, adapted for an emerging and less saturated arena.</p>
+
+    <p>The window to exploit these strategies is <strong>open now</strong>, while Polymarket's micro-window markets are still inefficient enough to generate edge. Build fast, monitor obsessively, and iterate weekly.</p>
+  </section>
+
+</div>
+
+<!-- CONTACT -->
+<div class="content" style="padding-bottom: 0;">
+  <div class="divider">
+    <div class="divider-line"></div>
+    <div class="divider-mark">CONTACT</div>
+    <div class="divider-line"></div>
+  </div>
+  <section class="section" style="margin-bottom: 40px;">
+    <span class="section-number">// 08 — GET IN TOUCH</span>
+    <h2>Contact</h2>
+    <p>Have questions about this strategy, want to collaborate on a bot build, or looking for consulting on prediction market automation? Reach out directly or verify the track record on Polymarket.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 24px;">
+
+      <!-- Telegram -->
+      <a href="https://t.me/blacksky_jose" target="_blank" class="contact-link">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.93 7.28l-1.68 7.93c-.12.56-.46.7-.93.43l-2.58-1.9-1.24 1.2c-.14.14-.26.26-.52.26l.18-2.6 4.72-4.26c.2-.18-.05-.28-.32-.1L7.9 14.47l-2.53-.79c-.55-.17-.56-.55.12-.82l9.88-3.81c.46-.17.86.11.56.23z" fill="#00ffc8"/>
+        </svg>
+        <div class="contact-link-text">
+          <span class="contact-link-label">Telegram</span>
+          <span class="contact-link-value">@blacksky_jose</span>
+        </div>
+        <span class="contact-link-arrow">→</span>
+      </a>
+
+      <!-- Polymarket Profile -->
+      <a href="https://polymarket.com/@k9Q2mX4L8A7ZP3R?tab=activity" target="_blank" class="contact-link gold-link">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="20" height="20" rx="4" stroke="#f0b429" stroke-width="1.5" fill="none"/>
+          <path d="M7 12h10M12 7l5 5-5 5" stroke="#f0b429" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="contact-link-text">
+          <span class="contact-link-label">Polymarket Profile — Live Activity</span>
+          <span class="contact-link-value">polymarket.com/@k9Q2mX4L8A7ZP3R</span>
+        </div>
+        <span class="contact-link-arrow" style="color: var(--accent3);">→</span>
+      </a>
+
+    </div>
+
+    <!-- Profile Stats Bar -->
+    <div style="
+      margin-top: 28px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 20px 28px;
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+      align-items: center;
+    ">
+      <div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Polymarket ID</div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--white);">k9Q2mX4L8A7ZP3R</div>
+      </div>
+      <div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Joined</div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--white);">Dec 2025</div>
+      </div>
+      <div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">All-Time P&amp;L</div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--accent);">+$1,436,159</div>
+      </div>
+      <div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Views</div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--white);">362.2K</div>
+      </div>
+    </div>
+
+  </section>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">POLY//BOT</div>
+  <div class="footer-note">
+    This post is for educational purposes only. Prediction market trading involves significant financial risk. Past bot performance does not guarantee future results. Always trade with capital you can afford to lose.
+  </div>
+</footer>
+
+</body>
+</html>
